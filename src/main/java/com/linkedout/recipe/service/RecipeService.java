@@ -16,10 +16,7 @@ public class RecipeService {
   private final ObjectMapper objectMapper;
   private final ModelMapper modelMapper;
 
-  public Mono<ApiResponseData> health(ApiRequestData request, String correlationId) {
-    return ApiResponseData.create(correlationId)
-        .withStatus(200)
-        .withBody("health check OK")
-        .toMono();
+  public Mono<String> health() {
+    return Mono.just("ok");
   }
 }
