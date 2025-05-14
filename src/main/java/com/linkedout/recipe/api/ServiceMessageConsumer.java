@@ -4,10 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedout.recipe.service.RecipeService;
 import com.linkedout.common.constant.RabbitMQConstants;
 import com.linkedout.common.dto.ServiceMessageDTO;
-import com.linkedout.common.dto.auth.oauth.google.GoogleUserInfo;
 import com.linkedout.common.exception.ErrorResponseBuilder;
 import com.linkedout.common.messaging.ServiceIdentifier;
-import com.linkedout.common.util.PayloadConverter;
+import com.linkedout.common.util.converter.PayloadConverter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -18,8 +17,8 @@ import reactor.core.scheduler.Schedulers;
 
 /**
  * 마이크로서비스 간 통신을 위한 메시지 소비자 클래스입니다. 이 클래스는 특정 큐를 리스닝하고 {@link ServiceMessageDTO} 구조에 부합하는 메시지를
- * 처리합니다. 수행되는 작업은 수신 메시지의 operation 필드에 의해 정의되며, 작업 유형에 따라 {@link RecipeService}의 적절한 메서드로 비즈니스
- * 로직을 위임합니다.
+ * 처리합니다. 수행되는 작업은 수신 메시지의 operation 필드에 의해 정의되며, 작업 유형에 따라 {@link RecipeService}의 적절한 메서드로 비즈니스 로직을
+ * 위임합니다.
  *
  * <p>이 클래스의 책임: - 다른 마이크로서비스로부터의 메시지 리스닝 - 지정된 작업에 따른 수신 서비스 요청 처리 - {@link ErrorResponseBuilder}를
  * 사용한 오류 처리 및 오류 응답 구성 - `replyTo` 필드에 지정된 응답 큐로 성공 또는 오류 응답 전송
@@ -57,99 +56,101 @@ public class ServiceMessageConsumer {
    *     senderService: 요청을 보낸 서비스의 식별자 - operation: 수행할 작업 유형 (test/findByEmail/createAccount) -
    *     replyTo: 응답을 전송할 큐 이름 - payload: 작업에 필요한 데이터
    */
-  @RabbitListener(queues = RabbitMQConstants.RECIPE_SERVICE_CONSUMER_QUEUE)
-  public void processServiceRequest(ServiceMessageDTO<?> requestMessage) {
-    String correlationId = requestMessage.getCorrelationId();
-    String operation = requestMessage.getOperation();
-    String senderService = requestMessage.getSenderService();
-    String replyTo = requestMessage.getReplyTo();
-
-    log.info(
-        "서비스 요청 수신: correlationId={}, operation={}, sender={}, replyTo={}",
-        correlationId,
-        operation,
-        senderService,
-        replyTo);
-
-    // 요청 처리를 Mono로 래핑
-    Mono.fromCallable(
-            () -> {
-              ServiceMessageDTO<Object> response =
-                  ServiceMessageDTO.builder()
-                      .correlationId(correlationId)
-                      .senderService(serviceIdentifier.getServiceName())
-                      .operation(operation + "Response")
-                      .build();
-
-              try {
-                // 작업 타입에 따른 처리 분기
-                Object result =
-                    switch (operation) {
-                      case "test" -> recipeService.test();
-//                      case "findByEmail" ->
-//												recipeService
-//                              .findAccountByEmail(
-//                                  payloadConverter.convert(
-//                                      requestMessage.getPayload(), String.class))
-//                              .block();
-//                      case "createAccount" ->
-//												recipeService
-//                              .createAccount(
-//                                  payloadConverter.convert(
-//                                      requestMessage.getPayload(), GoogleUserInfo.class))
-//                              .block();
-                      default ->
-                          throw new UnsupportedOperationException("지원하지 않는 작업: " + operation);
-                    };
-
-                log.info("서비스로직 완료, 응답생성. 결과: {}", result);
-
-                // 응답에 결과 설정
-                response.setPayload(result);
-
-              } catch (Exception e) {
-                log.error("서비스 요청 처리 오류: operation={}, error={}", operation, e.getMessage(), e);
-                // 오류 응답 설정
-                response.setError(e.getMessage());
-              }
-
-              return response;
-            })
-        .subscribeOn(Schedulers.boundedElastic())
-        .subscribe(
-            response -> {
-              // 응답 메시지 전송
-              log.info(
-                  "서비스 응답 전송: correlationId={}, replyTo={}, 응답타입={}",
-                  correlationId,
-                  replyTo,
-                  (response.getError() != null ? "오류" : "성공"));
-
-              rabbitTemplate.convertAndSend(
-                  RabbitMQConstants.SERVICE_EXCHANGE,
-                  replyTo, // 요청의 replyTo 필드 사용
-                  response);
-
-              log.info("서비스 응답 전송 완료: correlationId={}", correlationId);
-            },
-            error -> {
-              log.error(
-                  "서비스 응답 생성 실패: correlationId={}, error={}",
-                  correlationId,
-                  error.getMessage(),
-                  error);
-
-              // 오류 응답 생성 및 전송
-              ServiceMessageDTO<Object> errorResponse =
-                  ServiceMessageDTO.builder()
-                      .correlationId(correlationId)
-                      .senderService(serviceIdentifier.getServiceName())
-                      .operation(operation + "Response")
-                      .error("내부 서버 오류: " + error.getMessage())
-                      .build();
-
-              rabbitTemplate.convertAndSend(
-                  RabbitMQConstants.SERVICE_EXCHANGE, replyTo, errorResponse);
-            });
-  }
+  //  @RabbitListener(queues = RabbitMQConstants.RECIPE_SERVICE_CONSUMER_QUEUE)
+  //  public void processServiceRequest(ServiceMessageDTO<?> requestMessage) {
+  //    String correlationId = requestMessage.getCorrelationId();
+  //    String operation = requestMessage.getOperation();
+  //    String senderService = requestMessage.getSenderService();
+  //    String replyTo = requestMessage.getReplyTo();
+  //
+  //    log.info(
+  //        "서비스 요청 수신: correlationId={}, operation={}, sender={}, replyTo={}",
+  //        correlationId,
+  //        operation,
+  //        senderService,
+  //        replyTo);
+  //
+  //    // 요청 처리를 Mono로 래핑
+  //    Mono.fromCallable(
+  //            () -> {
+  //              ServiceMessageDTO<Object> response =
+  //                  ServiceMessageDTO.builder()
+  //                      .correlationId(correlationId)
+  //                      .senderService(serviceIdentifier.getServiceName())
+  //                      .operation(operation + "Response")
+  //                      .build();
+  //
+  //              try {
+  //                // 작업 타입에 따른 처리 분기
+  //                Object result =
+  //                    switch (operation) {
+  //                      case "test" -> recipeService.test();
+  //                                            case "findByEmail" ->
+  //                      												recipeService
+  //                                                    .findAccountByEmail(
+  //                                                        payloadConverter.convert(
+  //                                                            requestMessage.getPayload(),
+  //                       String.class))
+  //                                                    .block();
+  //                                            case "createAccount" ->
+  //                      												recipeService
+  //                                                    .createAccount(
+  //                                                        payloadConverter.convert(
+  //                                                            requestMessage.getPayload(),
+  //                       GoogleUserInfo.class))
+  //                                                    .block();
+  //                      default ->
+  //                          throw new UnsupportedOperationException("지원하지 않는 작업: " + operation);
+  //                    };
+  //
+  //                log.info("서비스로직 완료, 응답생성. 결과: {}", result);
+  //
+  //                // 응답에 결과 설정
+  //                response.setPayload(result);
+  //
+  //              } catch (Exception e) {
+  //                log.error("서비스 요청 처리 오류: operation={}, error={}", operation, e.getMessage(), e);
+  //                // 오류 응답 설정
+  //                response.setError(e.getMessage());
+  //              }
+  //
+  //              return response;
+  //            })
+  //        .subscribeOn(Schedulers.boundedElastic())
+  //        .subscribe(
+  //            response -> {
+  //              // 응답 메시지 전송
+  //              log.info(
+  //                  "서비스 응답 전송: correlationId={}, replyTo={}, 응답타입={}",
+  //                  correlationId,
+  //                  replyTo,
+  //                  (response.getError() != null ? "오류" : "성공"));
+  //
+  //              rabbitTemplate.convertAndSend(
+  //                  RabbitMQConstants.SERVICE_EXCHANGE,
+  //                  replyTo, // 요청의 replyTo 필드 사용
+  //                  response);
+  //
+  //              log.info("서비스 응답 전송 완료: correlationId={}", correlationId);
+  //            },
+  //            error -> {
+  //              log.error(
+  //                  "서비스 응답 생성 실패: correlationId={}, error={}",
+  //                  correlationId,
+  //                  error.getMessage(),
+  //                  error);
+  //
+  //              // 오류 응답 생성 및 전송
+  //              ServiceMessageDTO<Object> errorResponse =
+  //                  ServiceMessageDTO.builder()
+  //                      .correlationId(correlationId)
+  //                      .senderService(serviceIdentifier.getServiceName())
+  //                      .operation(operation + "Response")
+  //                      .error("내부 서버 오류: " + error.getMessage())
+  //                      .build();
+  //
+  //              rabbitTemplate.convertAndSend(
+  //                  RabbitMQConstants.SERVICE_EXCHANGE, replyTo, errorResponse);
+  //            });
+  //  }
 }

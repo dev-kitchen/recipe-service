@@ -1,20 +1,25 @@
 package com.linkedout.recipe.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linkedout.common.dto.ApiRequestData;
+import com.linkedout.common.dto.ApiResponseData;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class RecipeService {
-	private final ObjectMapper objectMapper;
-	private final ModelMapper modelMapper;
+  private final ObjectMapper objectMapper;
+  private final ModelMapper modelMapper;
 
-	public String test() {
-		log.info("서비스로직 진입");
-		return "ok";
-	}
+  public Mono<ApiResponseData> health(ApiRequestData request, String correlationId) {
+    return ApiResponseData.create(correlationId)
+        .withStatus(200)
+        .withBody("health check OK")
+        .toMono();
+  }
 }

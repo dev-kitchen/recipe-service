@@ -8,7 +8,7 @@ import com.linkedout.common.dto.ServiceMessageDTO;
 import com.linkedout.common.exception.BaseException;
 import com.linkedout.common.exception.ErrorResponseBuilder;
 import com.linkedout.common.messaging.ServiceIdentifier;
-import com.linkedout.common.util.PayloadConverter;
+import com.linkedout.common.util.converter.PayloadConverter;
 import com.linkedout.recipe.service.RecipeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,8 +24,7 @@ import java.util.HashMap;
 
 /**
  * API Gateway로부터 수신한 API 요청을 처리하는 소비자 클래스입니다. 이 클래스는 특정 큐를 리스닝하고 {@link ServiceMessageDTO} 구조에 부합하는
- * 메시지를 처리합니다. 수행되는 작업은 수신 메시지의 operation 필드에 의해 정의되며, 작업 유형에 따라 서비스의 적절한 메서드로
- * 비즈니스 로직을 위임합니다.
+ * 메시지를 처리합니다. 수행되는 작업은 수신 메시지의 operation 필드에 의해 정의되며, 작업 유형에 따라 서비스의 적절한 메서드로 비즈니스 로직을 위임합니다.
  *
  * <p>이 클래스의 책임: - API Gateway로부터의 메시지 리스닝 - 지정된 작업에 따른 수신 서비스 요청 처리 - {@link ErrorResponseBuilder}를
  * 사용한 오류 처리 및 오류 응답 구성 - `replyTo` 필드에 지정된 응답 큐로 성공 또는 오류 응답 전송
@@ -68,31 +67,37 @@ public class ApiMessageConsumer {
       ApiRequestData request, @Header(AmqpHeaders.CORRELATION_ID) String correlationId) {
     log.info("받은 요청: {}, correlationId: {}", request, correlationId);
 
-    ApiResponseData response = new ApiResponseData();
-    response.setCorrelationId(correlationId);
-    response.setHeaders(new HashMap<>());
-
     // 요청 처리를 Mono로 래핑
-    Mono.fromCallable(
+    Mono<ApiResponseData> responseMono =
+        Mono.defer(
             () -> {
-              try {
-                String path = request.getPath();
-                String method = request.getMethod();
-                String requestKey = method + " " + path;
+              String path = request.getPath();
+              String method = request.getMethod();
+              String requestKey = method + " " + path;
 
-                switch (requestKey) {
-                  //						case "GET /api/auth/test" -> authService.test(request, response);
-                  default ->
-                      errorResponseBuilder.populateErrorResponse(
-                          response, 404, "지원하지 않는 작업" + requestKey);
-                }
+              try {
+                // 스위치 문으로 다양한 경로 매칭
+
+                return switch (requestKey) {
+                  case "GET /api/recipes/health" -> recipeService.health(request, correlationId);
+
+                  default -> {
+                    ApiResponseData errorResponse = ApiResponseData.create(correlationId);
+                    errorResponseBuilder.populateErrorResponse(
+                        errorResponse, 404, "지원하지 않는 작업: " + requestKey);
+                    yield Mono.just(errorResponse);
+                  }
+                };
               } catch (BaseException ex) {
+                ApiResponseData errorResponse = ApiResponseData.create(correlationId);
                 errorResponseBuilder.populateErrorResponse(
-                    response, ex.getStatusCode(), ex.getMessage());
+                    errorResponse, ex.getStatusCode(), ex.getMessage());
+                return errorResponse.toMono();
               }
-              return response;
-            })
-        .subscribeOn(Schedulers.boundedElastic()) // IO 작업은 boundedElastic 스케줄러에서 실행
+            });
+
+    responseMono
+        .subscribeOn(Schedulers.boundedElastic())
         .subscribe(
             completedResponse -> {
               // 응답 전송
