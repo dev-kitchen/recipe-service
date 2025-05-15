@@ -1,22 +1,28 @@
 package com.linkedout.recipe.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedout.common.dto.ApiRequestData;
-import com.linkedout.common.dto.ApiResponseData;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.modelmapper.ModelMapper;
-import org.springframework.stereotype.Service;
+import com.linkedout.common.model.dto.EnrichedRequestData;
+import com.linkedout.common.model.dto.recipe.RecipeDTO;
+import com.linkedout.common.model.dto.recipe.request.RecipeCreateDTO;
 import reactor.core.publisher.Mono;
 
-@Slf4j
-@Service
-@RequiredArgsConstructor
-public class RecipeService {
-  private final ObjectMapper objectMapper;
-  private final ModelMapper modelMapper;
+public interface RecipeService  {
+	Mono<String> health();
 
-  public Mono<String> health() {
-    return Mono.just("ok");
-  }
+	// 레시피 ID로 조회
+	Mono<RecipeDTO> findById(EnrichedRequestData<?> request);
+
+	// 일반 저장 메서드
+	Mono<RecipeDTO> save(RecipeCreateDTO recipe);
+
+	// 이름으로 유사도 검색 (기본 임계값 사용)
+//	Flux<Recipe> searchByNameSimilarity(String searchTerm);
+//
+//	// 이름으로 유사도 검색 (임계값 지정)
+//	Flux<Recipe> searchByNameSimilarity(String searchTerm, float similarityThreshold);
+//
+//	// 정규화된 이름으로 유사도 검색 (대소문자 구분 없음)
+//	Flux<Recipe> searchByNormalizedName(String searchTerm);
+//
+//	// 정규화된 이름으로 유사도 검색 (임계값 지정)
+//	Flux<Recipe> searchByNormalizedName(String searchTerm, float similarityThreshold);
 }

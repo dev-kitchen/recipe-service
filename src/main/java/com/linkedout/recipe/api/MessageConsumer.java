@@ -2,9 +2,12 @@ package com.linkedout.recipe.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linkedout.common.constant.RabbitMQConstants;
-import com.linkedout.common.dto.ServiceMessageDTO;
 import com.linkedout.common.exception.ErrorResponseBuilder;
 import com.linkedout.common.messaging.ServiceIdentifier;
+import com.linkedout.common.model.dto.EnrichedRequestData;
+import com.linkedout.common.model.dto.ServiceMessageDTO;
+import com.linkedout.common.model.dto.auth.AuthenticationDTO;
+import com.linkedout.common.model.dto.recipe.request.RecipeCreateDTO;
 import com.linkedout.common.util.converter.PayloadConverter;
 import com.linkedout.recipe.service.RecipeService;
 import lombok.RequiredArgsConstructor;
@@ -61,33 +64,55 @@ public class MessageConsumer {
 		String operation = requestMessage.getOperation();
 		String senderService = requestMessage.getSenderService();
 		String replyTo = requestMessage.getReplyTo();
+		AuthenticationDTO accountInfo = requestMessage.getAuthentication();
+		Object payload = requestMessage.getPayload();
 
 		log.info(
-			"서비스 요청 수신: correlationId={}, operation={}, sender={}, replyTo={}",
+			"서비스 요청 수신: correlationId={}, operation={}, sender={}, replyTo={}, authenticationDTO={}, payload={}",
 			correlationId,
 			operation,
 			senderService,
-			replyTo);
+			replyTo,
+			accountInfo,
+			payload);
 
 		// 작업 타입에 따른 리액티브 처리 분기
 		Mono<?> resultMono =
 			switch (operation) {
 				case "getHealth" -> recipeService.health();
+				case "getById" -> {
+					EnrichedRequestData<?> requestData = payloadConverter.convert(requestMessage.getPayload(), EnrichedRequestData.class);
+						yield recipeService.findById(requestData);
+				}
+				case "post" -> recipeService.save((RecipeCreateDTO) requestMessage.getPayload());
 				default -> Mono.error(new UnsupportedOperationException("지원하지 않는 작업: " + operation));
 			};
 
 		resultMono
-			.map(
-				result -> {
-					log.info("서비스로직 완료, 응답생성. 결과: {}", result);
+			.flatMap(result -> {
+				log.info("서비스로직 완료, 응답생성. 결과: {}", result);
 
-					return ServiceMessageDTO.builder()
-						.correlationId(correlationId)
-						.senderService(serviceIdentifier.getServiceName())
-						.operation(operation + "Response")
-						.payload(result)
-						.build();
-				})
+				ServiceMessageDTO<Object> response = ServiceMessageDTO.builder()
+					.correlationId(correlationId)
+					.senderService(serviceIdentifier.getServiceName())
+					.operation(operation + "Response")
+					.payload(result)
+					.build();
+
+				return Mono.just(response);
+			})
+			.switchIfEmpty(Mono.defer(() -> {
+				log.info("빈 결과값, 응답생성");
+
+				ServiceMessageDTO<Object> emptyResponse = ServiceMessageDTO.builder()
+					.correlationId(correlationId)
+					.senderService(serviceIdentifier.getServiceName())
+					.operation(operation + "Response")
+					.payload(null)  // 또는 적절한 값
+					.build();
+
+				return Mono.just(emptyResponse);
+			}))
 			.onErrorResume(
 				e -> {
 					log.error("서비스 요청 처리 오류: operation={}, error={}", operation, e.getMessage(), e);
