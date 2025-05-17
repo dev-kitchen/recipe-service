@@ -1,10 +1,9 @@
 package com.linkedout.recipe.service.helper;
 
-import com.linkedout.common.messaging.ServiceMessageClient;
+import com.linkedout.common.messaging.serviceClient.ServiceMessageClient;
 import com.linkedout.common.model.dto.account.AccountDTO;
 import com.linkedout.common.model.dto.recipe.RecipeDTO;
 import com.linkedout.common.model.entity.Recipe;
-import com.linkedout.recipe.repository.RecipeRepository;
 import lombok.RequiredArgsConstructor;
 import org.modelmapper.ModelMapper;
 import org.springframework.stereotype.Component;
