@@ -1,11 +1,16 @@
 package com.linkedout.recipe.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.linkedout.common.model.dto.EnrichedRequestData;
+import com.linkedout.common.messaging.ServiceMessageClient;
+import com.linkedout.common.model.dto.EnrichedRequestDTO;
+import com.linkedout.common.model.dto.account.AccountDTO;
+import com.linkedout.common.model.dto.auth.AuthenticationDTO;
 import com.linkedout.common.model.dto.recipe.RecipeDTO;
 import com.linkedout.common.model.dto.recipe.request.RecipeCreateDTO;
 import com.linkedout.common.model.entity.Recipe;
+import com.linkedout.common.util.MonoPipe;
 import com.linkedout.recipe.repository.RecipeRepository;
+import com.linkedout.recipe.service.helper.RecipeQueryHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.modelmapper.ModelMapper;
@@ -20,35 +25,25 @@ public class RecipeServiceImpl implements RecipeService {
   private final ObjectMapper objectMapper;
   private final ModelMapper modelMapper;
 	private final RecipeRepository recipeRepository;
+	private final RecipeQueryHelper queryHelper;
 
 
 	@Override
-  public Mono<String> health() {
-    return Mono.just("ok");
-  }
-
-
-
-	@Override
-	public Mono<RecipeDTO> findById(EnrichedRequestData<?> request) {
-		Long id = request.extractIdFromPath();
-		if (id == null) {
-			return Mono.error(new IllegalArgumentException("Invalid ID"));
-		}
-
-		return recipeRepository.findById(id)
-			.doOnError(err -> log.error("DB 쿼리 중 오류 발생: {}", err.getMessage(), err))
-			.mapNotNull(recipe -> modelMapper.map(recipe, RecipeDTO.class))
-			.switchIfEmpty(Mono.defer(() -> {
-				log.warn("ID {}인 레시피를 찾을 수 없음", id);
-				return Mono.empty();
-			}));
+	public Mono<RecipeDTO> findById(EnrichedRequestDTO<?> request) {
+		return MonoPipe.of(request.extractIdFromPath())
+			.then(recipeRepository::findById)
+			.thenFlatMap(queryHelper::convertAndAttachAuthorInfo)
+			.handleError(error -> log.error("DB 쿼리 중 오류 발생: {}", error.getMessage(), error))
+			.handleEmpty(Mono::empty)
+			.result();
 	}
 
+
 	@Override
-	public Mono<RecipeDTO> save(RecipeCreateDTO recipeCreateDTO) {
-		Recipe recipe = modelMapper.map(recipeCreateDTO, Recipe.class);
-		return recipeRepository.save(recipe)
-			.map(savedRecipe ->  modelMapper.map(savedRecipe, RecipeDTO.class));
+	public Mono<Void> save(EnrichedRequestDTO<RecipeCreateDTO> request, AuthenticationDTO accountInfo) {
+		Recipe recipe = modelMapper.map(request.getBody(), Recipe.class);
+		recipe.setAuthorId(Long.valueOf(accountInfo.getPrincipal()));
+		return recipeRepository.save(recipe).then();
 	}
+
 }

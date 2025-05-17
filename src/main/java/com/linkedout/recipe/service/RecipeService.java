@@ -1,18 +1,18 @@
 package com.linkedout.recipe.service;
 
-import com.linkedout.common.model.dto.EnrichedRequestData;
+import com.linkedout.common.model.dto.EnrichedRequestDTO;
+import com.linkedout.common.model.dto.auth.AuthenticationDTO;
 import com.linkedout.common.model.dto.recipe.RecipeDTO;
 import com.linkedout.common.model.dto.recipe.request.RecipeCreateDTO;
 import reactor.core.publisher.Mono;
 
 public interface RecipeService  {
-	Mono<String> health();
 
 	// 레시피 ID로 조회
-	Mono<RecipeDTO> findById(EnrichedRequestData<?> request);
+	Mono<RecipeDTO> findById(EnrichedRequestDTO<?> requestData);
 
 	// 일반 저장 메서드
-	Mono<RecipeDTO> save(RecipeCreateDTO recipe);
+	Mono<Void> save(EnrichedRequestDTO<RecipeCreateDTO> requestData, AuthenticationDTO accountInfo);
 
 	// 이름으로 유사도 검색 (기본 임계값 사용)
 //	Flux<Recipe> searchByNameSimilarity(String searchTerm);
